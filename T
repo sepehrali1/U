@@ -1,0 +1,1666 @@
+-- [[ Sskid Reborn v9.0 — Fluent Dragon (TRUE Bug-Free) ]] --
+
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local SoundService = game:GetService("SoundService")
+local RunService = game:GetService("RunService")
+local StarterGui = game:GetService("StarterGui")
+local GuiService = game:GetService("GuiService")
+
+local LP = Players.LocalPlayer
+
+pcall(function()
+    local c = game:GetService("CoreGui"):FindFirstChild("SskidReborn")
+    if c then c:Destroy() end
+    local s = SoundService:FindFirstChild("SskidMusic")
+    if s then s:Destroy() end
+    local b = game:GetService("Lighting"):FindFirstChild("SskidBlur")
+    if b then b:Destroy() end
+end)
+
+local SafeParent = game:GetService("CoreGui")
+if gethui then local ok, res = pcall(gethui); if ok and res then SafeParent = res end end
+
+local LOGO_ID = "rbxassetid://72416355959270"
+local SKIN_ID = "rbxassetid://107364040359004"
+
+local Playlist = {
+    {name = "Track 1 — Dragon",   id = "105828916140935"},
+    {name = "Track 2 — Neon",     id = "90089940136467"},
+    {name = "Track 3 — Sskid",    id = "86317637164248"},
+    {name = "Track 4 — Phantom",  id = "110398343528156"},
+    {name = "Track 5 — Classic",  id = "17433676802"},
+    {name = "Track 6 — Cyber",    id = "118805409294714"},
+    {name = "Track 7 — Void",     id = "83707813531588"},
+    {name = "Track 8 — Crimson",  id = "94308954886862"},
+}
+
+local C = {
+    blood = Color3.fromRGB(190, 20, 30),
+    blood2 = Color3.fromRGB(255, 60, 60),
+    ink = Color3.fromRGB(10, 10, 12),
+    surface = Color3.fromRGB(18, 16, 18),
+    text = Color3.fromRGB(235, 230, 230),
+    subtext = Color3.fromRGB(165, 150, 150),
+    white = Color3.fromRGB(255, 255, 255),
+    dim = Color3.fromRGB(120, 105, 105),
+    surface2 = Color3.fromRGB(24, 20, 22),
+    surface3 = Color3.fromRGB(14, 12, 13),
+}
+local EASE, EASE2 = Enum.EasingStyle.Quint, Enum.EasingStyle.Back
+
+-- [+] State table - همه چیز تو یه جا
+local State = {
+    destroyed = false,
+    connections = {},
+    dragStart = nil,
+    startPos = nil,
+    isDragging = false,
+    isMinimized = false,
+    savedW = 0,
+    savedH = 0,
+    musicOn = true,
+    musicVolume = 0.45,
+    currentTrack = 3,
+    panelW = 0,
+    panelH = 0,
+    currentUIScale = 1,
+    currentCat = "All",
+    refreshQueued = false,
+    blurTween = nil,
+    seeking = false,
+    volDragging = false,
+}
+
+-- [+] Forward declarations برای توابعی که بعداً تعریف می‌شن
+local runEntry
+local refreshTiles
+local notify
+
+local function track(signal, fn)
+    if State.destroyed then return end
+    local c = signal:Connect(fn)
+    table.insert(State.connections, c)
+    return c
+end
+
+local function corner(inst, r) 
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, r or 8); c.Parent = inst; return c 
+end
+local function stroke(inst, color, t, tr)
+    local s = Instance.new("UIStroke"); s.Color = color or C.blood; s.Thickness = t or 1; s.Transparency = tr or 0.5
+    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border; s.Parent = inst; return s
+end
+local function gradient(inst, seq, rot, tseq)
+    local g = Instance.new("UIGradient"); g.Color = seq; g.Rotation = rot or 0
+    if tseq then g.Transparency = tseq end
+    g.Parent = inst; return g
+end
+local function tween(inst, info, props) 
+    local t = TweenService:Create(inst, info, props)
+    t:Play()
+    return t 
+end
+local function isPress(i) return i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch end
+local function isMove(i) return i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch end
+local function topInset() local ok, v = pcall(function() return GuiService:GetGuiInset().Y end); return (ok and v) or 0 end
+
+-- [+] باگ 7 Fix: notify سه آرگومان می‌گیره
+notify = function(title, text, kind, duration)
+    pcall(function() 
+        StarterGui:SetCore("SendNotification", {
+            Title = title, 
+            Text = text, 
+            Duration = duration or 3
+        }) 
+    end)
+end
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "SskidReborn"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.IgnoreGuiInset = true
+ScreenGui.DisplayOrder = 999999
+ScreenGui.Parent = SafeParent
+
+local isMobile = UIS.TouchEnabled and not UIS.MouseEnabled
+
+local camera = workspace.CurrentCamera
+local viewport = camera and camera.ViewportSize or Vector2.new(1920, 1080)
+local function refreshViewport() if camera then viewport = camera.ViewportSize end end
+
+local function calcDimensions()
+    refreshViewport()
+    local w, h
+    if viewport.X < 500 then
+        w = math.min(viewport.X - 16, 340); h = math.min(viewport.Y - 100, viewport.Y * 0.82)
+    elseif viewport.X < 800 then
+        w = math.min(viewport.X * 0.9, 400); h = math.min(viewport.Y * 0.8, 480)
+    elseif viewport.X < 1200 then
+        w = math.min(viewport.X * 0.58, 480); h = math.min(viewport.Y * 0.75, 460)
+    else
+        w = math.min(viewport.X * 0.46, 560); h = math.min(viewport.Y * 0.75, 500)
+    end
+    return w, h
+end
+
+local function calcUIScale()
+    refreshViewport()
+    if viewport.X < 500 then return 0.82
+    elseif viewport.X < 800 then return 0.92
+    else return 1 end
+end
+
+State.panelW, State.panelH = calcDimensions()
+State.currentUIScale = calcUIScale()
+State.savedW = State.panelW
+State.savedH = State.panelH
+
+-- [+] Music
+local function createSound(trackIndex)
+    local old = SoundService:FindFirstChild("SskidMusic")
+    if old then pcall(function() old:Destroy() end) end
+    local track = Playlist[trackIndex]
+    if not track then return nil end
+    local s = Instance.new("Sound")
+    s.Name = "SskidMusic"
+    s.SoundId = "rbxassetid://" .. track.id
+    s.Volume = 0
+    s.Looped = true
+    s.Parent = SoundService
+    pcall(function() s:Play() end)
+    tween(s, TweenInfo.new(1.5), {Volume = State.musicVolume})
+    return s
+end
+
+local BgSound = createSound(State.currentTrack)
+
+-- [+] Blur با Tween جدا
+local blur = Instance.new("BlurEffect")
+blur.Name = "SskidBlur"
+blur.Size = 0
+blur.Parent = game:GetService("Lighting")
+
+local function applyBlur(active)
+    if State.blurTween then
+        pcall(function() State.blurTween:Cancel() end)
+    end
+    State.blurTween = TweenService:Create(blur, TweenInfo.new(0.4), {Size = active and (isMobile and 7 or 16) or 0})
+    State.blurTween:Play()
+end
+
+local Backdrop = Instance.new("Frame")
+Backdrop.Size = UDim2.new(1, 0, 1, 0)
+Backdrop.BackgroundTransparency = 1
+Backdrop.Visible = false
+Backdrop.ZIndex = 1
+Backdrop.Parent = ScreenGui
+
+local Vignette = Instance.new("Frame")
+Vignette.Size = UDim2.new(1.4, 0, 0.6, 0)
+Vignette.AnchorPoint = Vector2.new(0.5, 1)
+Vignette.Position = UDim2.new(0.5, 0, 1.1, 0)
+Vignette.BackgroundColor3 = C.blood
+Vignette.BackgroundTransparency = 0.9
+Vignette.BorderSizePixel = 0
+Vignette.ZIndex = 1
+Vignette.Parent = Backdrop
+corner(Vignette, 400)
+
+-- [+] Loading
+local LoadingFrame = Instance.new("Frame")
+LoadingFrame.Size = UDim2.new(1, 0, 1, 0)
+LoadingFrame.BackgroundColor3 = C.ink
+LoadingFrame.BackgroundTransparency = 0.04
+LoadingFrame.BorderSizePixel = 0
+LoadingFrame.ZIndex = 100
+LoadingFrame.Parent = ScreenGui
+
+local LGlow = Instance.new("Frame")
+LGlow.Size = UDim2.new(0, 320, 0, 320)
+LGlow.AnchorPoint = Vector2.new(0.5, 0.5)
+LGlow.Position = UDim2.new(0.5, 0, 0.5, -30)
+LGlow.BackgroundColor3 = C.blood
+LGlow.BackgroundTransparency = 0.82
+LGlow.BorderSizePixel = 0
+LGlow.ZIndex = 100
+LGlow.Parent = LoadingFrame
+corner(LGlow, 160)
+
+local LRing = Instance.new("Frame")
+LRing.AnchorPoint = Vector2.new(0.5, 0.5)
+LRing.Position = UDim2.new(0.5, 0, 0.5, -30)
+LRing.Size = UDim2.new(0, 184, 0, 184)
+LRing.BackgroundTransparency = 1
+LRing.ZIndex = 101
+LRing.Parent = LoadingFrame
+corner(LRing, 92)
+local ringStroke = stroke(LRing, C.blood2, 2.5, 0.25)
+
+local LLogo = Instance.new("ImageLabel")
+LLogo.Size = UDim2.new(0, 160, 0, 160)
+LLogo.AnchorPoint = Vector2.new(0.5, 0.5)
+LLogo.Position = UDim2.new(0.5, 0, 0.5, -30)
+LLogo.BackgroundTransparency = 1
+LLogo.Image = LOGO_ID
+LLogo.ZIndex = 102
+LLogo.Parent = LoadingFrame
+corner(LLogo, 80)
+
+local LTitle = Instance.new("TextLabel")
+LTitle.BackgroundTransparency = 1
+LTitle.Size = UDim2.new(0, 460, 0, 28)
+LTitle.AnchorPoint = Vector2.new(0.5, 0)
+LTitle.Position = UDim2.new(0.5, 0, 0.5, 90)
+LTitle.Text = "SSKID"
+LTitle.Font = Enum.Font.Code
+LTitle.TextSize = 26
+LTitle.TextColor3 = C.text
+LTitle.ZIndex = 102
+LTitle.Parent = LoadingFrame
+
+local LSub = Instance.new("TextLabel")
+LSub.BackgroundTransparency = 1
+LSub.Size = UDim2.new(0, 460, 0, 16)
+LSub.AnchorPoint = Vector2.new(0.5, 0)
+LSub.Position = UDim2.new(0.5, 0, 0.5, 120)
+LSub.Text = "panel"
+LSub.Font = Enum.Font.Code
+LSub.TextSize = 11
+LSub.TextColor3 = C.blood2
+LSub.ZIndex = 102
+LSub.Parent = LoadingFrame
+
+track(RunService.Heartbeat, function(dt)
+    if State.destroyed then return end
+    if not LoadingFrame.Parent then return end
+    if LLogo and LLogo.Parent then
+        LLogo.Rotation = (LLogo.Rotation + 55 * dt) % 360
+    end
+    if LRing and LRing.Parent then
+        LRing.Rotation = (LRing.Rotation - 30 * dt) % 360
+    end
+end)
+
+applyBlur(true)
+
+-- [+] Main
+local Main = Instance.new("Frame")
+Main.Name = "Main"
+Main.AnchorPoint = Vector2.new(0.5, 0.5)
+Main.Position = UDim2.new(0.5, 0, 0.5, 20)
+Main.Size = UDim2.new(0, State.panelW, 0, State.panelH)
+Main.BackgroundColor3 = C.surface
+Main.BackgroundTransparency = 0.1
+Main.BorderSizePixel = 0
+Main.Visible = false
+Main.ClipsDescendants = true
+Main.ZIndex = 10
+Main.Parent = ScreenGui
+corner(Main, 10)
+local mainStroke = stroke(Main, C.blood, 1, 0.45)
+gradient(Main, ColorSequence.new{
+    ColorSequenceKeypoint.new(0, C.surface2),
+    ColorSequenceKeypoint.new(1, C.surface3),
+}, 90)
+
+local MainScale = Instance.new("UIScale")
+MainScale.Scale = State.currentUIScale
+MainScale.Parent = Main
+
+local topAccent = Instance.new("Frame")
+topAccent.Size = UDim2.new(1, 0, 0, 2)
+topAccent.BackgroundColor3 = C.blood
+topAccent.BackgroundTransparency = 0.3
+topAccent.BorderSizePixel = 0
+topAccent.ZIndex = 11
+topAccent.Parent = Main
+
+-- [+] TitleBar با دکمه‌های جدا
+local TitleBar = Instance.new("Frame")
+TitleBar.Size = UDim2.new(1, 0, 0, 40)
+TitleBar.BackgroundTransparency = 1
+TitleBar.ZIndex = 12
+TitleBar.Parent = Main
+
+-- [+] باگ 4 Fix: ناحیه درگ جدا از دکمه‌ها
+local DragArea = Instance.new("TextButton")
+DragArea.Size = UDim2.new(1, -140, 1, 0)
+DragArea.Position = UDim2.new(0, 0, 0, 0)
+DragArea.BackgroundTransparency = 1
+DragArea.Text = ""
+DragArea.AutoButtonColor = false
+DragArea.ZIndex = 12
+DragArea.Parent = TitleBar
+
+local TBLogo = Instance.new("ImageLabel")
+TBLogo.Size = UDim2.new(0, 22, 0, 22)
+TBLogo.Position = UDim2.new(0, 12, 0.5, -11)
+TBLogo.BackgroundTransparency = 1
+TBLogo.Image = LOGO_ID
+TBLogo.ZIndex = 13
+TBLogo.Parent = TitleBar
+corner(TBLogo, 11)
+
+local TBTitle = Instance.new("TextLabel")
+TBTitle.BackgroundTransparency = 1
+TBTitle.Size = UDim2.new(1, -250, 1, 0)
+TBTitle.Position = UDim2.new(0, 42, 0, 0)
+TBTitle.Text = "Sskid Panel"
+TBTitle.Font = Enum.Font.Code
+TBTitle.TextSize = 13
+TBTitle.TextColor3 = C.text
+TBTitle.TextXAlignment = Enum.TextXAlignment.Left
+TBTitle.TextTruncate = Enum.TextTruncate.AtEnd
+TBTitle.ZIndex = 13
+TBTitle.Parent = TitleBar
+
+local function captionBtn(symbol, xOffset, isClose)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(0, 44, 1, 0)
+    b.Position = UDim2.new(1, xOffset, 0, 0)
+    b.BackgroundColor3 = isClose and C.blood2 or C.white
+    b.BackgroundTransparency = 1
+    b.Text = symbol
+    b.Font = Enum.Font.Code
+    b.TextSize = 13
+    b.TextColor3 = isClose and C.text or C.subtext
+    b.AutoButtonColor = false
+    b.ZIndex = 14  -- بالاتر از DragArea
+    b.Parent = TitleBar
+    b.MouseEnter:Connect(function() tween(b, TweenInfo.new(0.1), {BackgroundTransparency = isClose and 0.3 or 0.85, TextColor3 = C.text}) end)
+    b.MouseLeave:Connect(function() tween(b, TweenInfo.new(0.1), {BackgroundTransparency = 1, TextColor3 = isClose and C.text or C.subtext}) end)
+    return b
+end
+local CloseBtn = captionBtn("✕", -44, true)
+local MinBtn = captionBtn("—", -88, false)
+
+-- [+] Sidebar
+local Sidebar = Instance.new("Frame")
+Sidebar.Size = UDim2.new(0, 58, 1, -40)
+Sidebar.Position = UDim2.new(0, 0, 0, 40)
+Sidebar.BackgroundColor3 = C.ink
+Sidebar.BackgroundTransparency = 0.35
+Sidebar.ZIndex = 12
+Sidebar.Parent = Main
+
+local sideBarLine = Instance.new("Frame")
+sideBarLine.Size = UDim2.new(0, 1, 1, 0)
+sideBarLine.Position = UDim2.new(1, -1, 0, 0)
+sideBarLine.BackgroundColor3 = C.blood
+sideBarLine.BackgroundTransparency = 0.6
+sideBarLine.BorderSizePixel = 0
+sideBarLine.ZIndex = 12
+sideBarLine.Parent = Sidebar
+
+local SideIndicator = Instance.new("Frame")
+SideIndicator.Size = UDim2.new(0, 3, 0, 32)
+SideIndicator.Position = UDim2.new(0, 0, 0, 8)
+SideIndicator.BackgroundColor3 = C.blood2
+SideIndicator.BorderSizePixel = 0
+SideIndicator.ZIndex = 13
+SideIndicator.Parent = Sidebar
+
+local function sideIcon(glyph, y)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(0, 40, 0, 40)
+    b.Position = UDim2.new(0.5, -20, 0, y)
+    b.BackgroundColor3 = C.blood
+    b.BackgroundTransparency = 1
+    b.Text = glyph
+    b.Font = Enum.Font.Code
+    b.TextSize = 17
+    b.TextColor3 = C.subtext
+    b.AutoButtonColor = false
+    b.ZIndex = 13
+    b.Parent = Sidebar
+    corner(b, 6)
+    b.MouseEnter:Connect(function() tween(b, TweenInfo.new(0.15), {BackgroundTransparency = 0.82}) end)
+    b.MouseLeave:Connect(function() tween(b, TweenInfo.new(0.15), {BackgroundTransparency = 1}) end)
+    return b
+end
+local IconScripts = sideIcon("</>", 8)
+local IconMusic = sideIcon("♪", 54)
+local IconInfo = sideIcon("(i)", 100)
+local IconSettings = sideIcon("[#]", 146)
+
+local Content = Instance.new("Frame")
+Content.Size = UDim2.new(1, -58, 1, -40)
+Content.Position = UDim2.new(0, 58, 0, 40)
+Content.BackgroundTransparency = 1
+Content.ClipsDescendants = true
+Content.ZIndex = 12
+Content.Parent = Main
+
+local function fadeIn(g, delay)
+    g.GroupTransparency = 1
+    task.delay(delay or 0, function() 
+        if g and g.Parent and not State.destroyed then 
+            tween(g, TweenInfo.new(0.35), {GroupTransparency = 0}) 
+        end 
+    end)
+end
+
+-- [+] Scripts Page
+local ScriptsPage = Instance.new("Frame")
+ScriptsPage.Size = UDim2.new(1, 0, 1, 0)
+ScriptsPage.BackgroundTransparency = 1
+ScriptsPage.ZIndex = 12
+ScriptsPage.Parent = Content
+
+local STop = Instance.new("Frame")
+STop.Size = UDim2.new(1, -24, 0, 70)
+STop.Position = UDim2.new(0, 12, 0, 10)
+STop.BackgroundTransparency = 1
+STop.ZIndex = 12
+STop.Parent = ScriptsPage
+
+local SearchFrame = Instance.new("Frame")
+SearchFrame.Size = UDim2.new(1, 0, 0, 32)
+SearchFrame.BackgroundColor3 = C.ink
+SearchFrame.BackgroundTransparency = 0.3
+SearchFrame.ZIndex = 12
+SearchFrame.Parent = STop
+corner(SearchFrame, 6)
+local searchStroke = stroke(SearchFrame, C.blood, 1, 0.6)
+
+local searchIcon = Instance.new("TextLabel")
+searchIcon.Size = UDim2.new(0, 26, 1, 0)
+searchIcon.Position = UDim2.new(0, 6, 0, 0)
+searchIcon.BackgroundTransparency = 1
+searchIcon.Text = "⌕"
+searchIcon.Font = Enum.Font.Code
+searchIcon.TextSize = 15
+searchIcon.TextColor3 = C.blood2
+searchIcon.ZIndex = 13
+searchIcon.Parent = SearchFrame
+
+local SearchBox = Instance.new("TextBox")
+SearchBox.Size = UDim2.new(1, -36, 1, 0)
+SearchBox.Position = UDim2.new(0, 30, 0, 0)
+SearchBox.BackgroundTransparency = 1
+SearchBox.Text = ""
+SearchBox.PlaceholderText = "Type to search apps..."
+SearchBox.PlaceholderColor3 = Color3.fromRGB(110, 100, 100)
+SearchBox.TextColor3 = C.text
+SearchBox.Font = Enum.Font.Code
+SearchBox.TextSize = 12
+SearchBox.TextXAlignment = Enum.TextXAlignment.Left
+SearchBox.ClearTextOnFocus = false
+SearchBox.ZIndex = 13
+SearchBox.Parent = SearchFrame
+SearchBox.Focused:Connect(function() tween(searchStroke, TweenInfo.new(0.2), {Transparency = 0.1}) end)
+SearchBox.FocusLost:Connect(function() tween(searchStroke, TweenInfo.new(0.2), {Transparency = 0.6}) end)
+
+local ChipsScroll = Instance.new("ScrollingFrame")
+ChipsScroll.Size = UDim2.new(1, 0, 0, 26)
+ChipsScroll.Position = UDim2.new(0, 0, 0, 40)
+ChipsScroll.BackgroundTransparency = 1
+ChipsScroll.BorderSizePixel = 0
+ChipsScroll.ScrollBarThickness = 0
+ChipsScroll.ScrollingDirection = Enum.ScrollingDirection.X
+ChipsScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+ChipsScroll.AutomaticCanvasSize = Enum.AutomaticSize.X
+ChipsScroll.ZIndex = 12
+ChipsScroll.Parent = STop
+local ChipsLayout = Instance.new("UIListLayout")
+ChipsLayout.FillDirection = Enum.FillDirection.Horizontal
+ChipsLayout.Padding = UDim.new(0, 6)
+ChipsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+ChipsLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+ChipsLayout.Parent = ChipsScroll
+
+local TileScroll = Instance.new("ScrollingFrame")
+TileScroll.Size = UDim2.new(1, -24, 1, -92)
+TileScroll.Position = UDim2.new(0, 12, 0, 86)
+TileScroll.BackgroundTransparency = 1
+TileScroll.BorderSizePixel = 0
+TileScroll.ScrollBarThickness = 2
+TileScroll.ScrollBarImageColor3 = C.blood2
+TileScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+TileScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+TileScroll.ZIndex = 12
+TileScroll.Parent = ScriptsPage
+local TileGrid = Instance.new("UIGridLayout")
+TileGrid.CellSize = UDim2.new(0, 84, 0, 84)
+TileGrid.CellPadding = UDim.new(0, 10, 0, 10)
+TileGrid.SortOrder = Enum.SortOrder.LayoutOrder
+TileGrid.Parent = TileScroll
+
+local EmptyLabel = Instance.new("TextLabel")
+EmptyLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+EmptyLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
+EmptyLabel.Size = UDim2.new(1, -30, 0, 80)
+EmptyLabel.BackgroundTransparency = 1
+EmptyLabel.Text = ""
+EmptyLabel.Font = Enum.Font.Code
+EmptyLabel.TextSize = 12
+EmptyLabel.TextWrapped = true
+EmptyLabel.TextColor3 = C.subtext
+EmptyLabel.ZIndex = 12
+EmptyLabel.Parent = ScriptsPage
+
+-- [+] Music Page
+local MusicPage = Instance.new("ScrollingFrame")
+MusicPage.Size = UDim2.new(1, 0, 1, 0)
+MusicPage.BackgroundTransparency = 1
+MusicPage.BorderSizePixel = 0
+MusicPage.ScrollBarThickness = 2
+MusicPage.ScrollBarImageColor3 = C.blood2
+MusicPage.CanvasSize = UDim2.new(0, 0, 0, 0)
+MusicPage.AutomaticCanvasSize = Enum.AutomaticSize.Y
+MusicPage.Visible = false
+MusicPage.ZIndex = 12
+MusicPage.Parent = Content
+
+local MusicList = Instance.new("UIListLayout")
+MusicList.Padding = UDim.new(0, 8)
+MusicList.SortOrder = Enum.SortOrder.LayoutOrder
+MusicList.Parent = MusicPage
+
+local MusicPad = Instance.new("UIPadding")
+MusicPad.PaddingTop = UDim.new(0, 12)
+MusicPad.PaddingLeft = UDim.new(0, 12)
+MusicPad.PaddingRight = UDim.new(0, 10)
+MusicPad.PaddingBottom = UDim.new(0, 10)
+MusicPad.Parent = MusicPage
+
+local MusicCard = Instance.new("Frame")
+MusicCard.Size = UDim2.new(1, 0, 0, 260)
+MusicCard.BackgroundColor3 = C.ink
+MusicCard.BackgroundTransparency = 0.3
+MusicCard.BorderSizePixel = 0
+MusicCard.LayoutOrder = 1
+MusicCard.ZIndex = 12
+MusicCard.Parent = MusicPage
+corner(MusicCard, 8)
+stroke(MusicCard, C.blood, 1, 0.65)
+
+local NowPlaying = Instance.new("TextLabel")
+NowPlaying.Size = UDim2.new(1, -24, 0, 20)
+NowPlaying.Position = UDim2.new(0, 12, 0, 12)
+NowPlaying.BackgroundTransparency = 1
+NowPlaying.Text = "🎵 " .. Playlist[State.currentTrack].name
+NowPlaying.Font = Enum.Font.Code
+NowPlaying.TextSize = 13
+NowPlaying.TextColor3 = C.text
+NowPlaying.TextXAlignment = Enum.TextXAlignment.Left
+NowPlaying.TextTruncate = Enum.TextTruncate.AtEnd
+NowPlaying.ZIndex = 13
+NowPlaying.Parent = MusicCard
+
+local TimeLbl = Instance.new("TextLabel")
+TimeLbl.Size = UDim2.new(1, -24, 0, 32)
+TimeLbl.Position = UDim2.new(0, 12, 0, 36)
+TimeLbl.BackgroundTransparency = 1
+TimeLbl.Text = "00:00 / 00:00"
+TimeLbl.Font = Enum.Font.Code
+TimeLbl.TextSize = 20
+TimeLbl.TextColor3 = C.blood2
+TimeLbl.ZIndex = 13
+TimeLbl.Parent = MusicCard
+
+local SeekTrack = Instance.new("Frame")
+SeekTrack.Size = UDim2.new(1, -24, 0, 6)
+SeekTrack.Position = UDim2.new(0, 12, 0, 84)
+SeekTrack.BackgroundColor3 = C.blood
+SeekTrack.BackgroundTransparency = 0.75
+SeekTrack.BorderSizePixel = 0
+SeekTrack.ZIndex = 13
+SeekTrack.Parent = MusicCard
+corner(SeekTrack, 3)
+
+local SeekFill = Instance.new("Frame")
+SeekFill.Size = UDim2.new(0, 0, 1, 0)
+SeekFill.BackgroundColor3 = C.blood2
+SeekFill.BorderSizePixel = 0
+SeekFill.ZIndex = 14
+SeekFill.Parent = SeekTrack
+corner(SeekFill, 3)
+
+local SeekKnob = Instance.new("Frame")
+SeekKnob.Size = UDim2.new(0, 12, 0, 12)
+SeekKnob.AnchorPoint = Vector2.new(0.5, 0.5)
+SeekKnob.Position = UDim2.new(0, 0, 0.5, 0)
+SeekKnob.BackgroundColor3 = C.white
+SeekKnob.BorderSizePixel = 0
+SeekKnob.ZIndex = 15
+SeekKnob.Parent = SeekTrack
+corner(SeekKnob, 6)
+
+local function updateSeekVisual()
+    if not BgSound or BgSound.TimeLength <= 0 then return end
+    local a = math.clamp(BgSound.TimePosition / BgSound.TimeLength, 0, 1)
+    if not State.seeking then
+        SeekFill.Size = UDim2.new(a, 0, 1, 0)
+        SeekKnob.Position = UDim2.new(a, 0, 0.5, 0)
+    end
+    local function fmt(sec) return string.format("%d:%02d", math.floor(sec / 60), math.floor(sec % 60)) end
+    TimeLbl.Text = fmt(BgSound.TimePosition) .. " / " .. fmt(BgSound.TimeLength)
+end
+
+local seekHit = Instance.new("TextButton")
+seekHit.Size = UDim2.new(1, 0, 0, 16)
+seekHit.Position = UDim2.new(0, 0, 0.5, -8)
+seekHit.BackgroundTransparency = 1
+seekHit.Text = ""
+seekHit.AutoButtonColor = false
+seekHit.ZIndex = 16
+seekHit.Parent = SeekTrack
+
+local function seekFrom(x)
+    if not BgSound or BgSound.TimeLength <= 0 then return end
+    local a = math.clamp((x - SeekTrack.AbsolutePosition.X) / math.max(1, SeekTrack.AbsoluteSize.X), 0, 1)
+    SeekFill.Size = UDim2.new(a, 0, 1, 0)
+    SeekKnob.Position = UDim2.new(a, 0, 0.5, 0)
+    BgSound.TimePosition = a * BgSound.TimeLength
+end
+seekHit.InputBegan:Connect(function(input) if isPress(input) then State.seeking = true; seekFrom(input.Position.X) end end)
+track(UIS.InputChanged, function(input) if State.seeking and isMove(input) then seekFrom(input.Position.X) end end)
+track(UIS.InputEnded, function(input) if State.seeking and isPress(input) then State.seeking = false end end)
+
+local TransportRow = Instance.new("Frame")
+TransportRow.Size = UDim2.new(1, -24, 0, 40)
+TransportRow.Position = UDim2.new(0, 12, 0, 104)
+TransportRow.BackgroundTransparency = 1
+TransportRow.ZIndex = 13
+TransportRow.Parent = MusicCard
+local TransportLayout = Instance.new("UIListLayout")
+TransportLayout.FillDirection = Enum.FillDirection.Horizontal
+TransportLayout.Padding = UDim.new(0, 6)
+TransportLayout.SortOrder = Enum.SortOrder.LayoutOrder
+TransportLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+TransportLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+TransportLayout.Parent = TransportRow
+
+local function transportBtn(glyph, order, wide)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(0, wide and 46 or 34, 0, 34)
+    b.BackgroundColor3 = C.blood
+    b.BackgroundTransparency = 0.25
+    b.Text = glyph
+    b.Font = Enum.Font.Code
+    b.TextSize = 13
+    b.TextColor3 = C.white
+    b.AutoButtonColor = false
+    b.LayoutOrder = order
+    b.ZIndex = 14
+    b.Parent = TransportRow
+    corner(b, 6)
+    b.MouseEnter:Connect(function() tween(b, TweenInfo.new(0.12), {BackgroundTransparency = 0.05}) end)
+    b.MouseLeave:Connect(function() tween(b, TweenInfo.new(0.12), {BackgroundTransparency = 0.25}) end)
+    return b
+end
+
+local PrevBtn    = transportBtn("⏮", 1)
+local RestartBtn = transportBtn("⟲", 2)
+local BackBtn    = transportBtn("«10", 3)
+local PlayBtn    = transportBtn("⏸", 4, true)
+local FwdBtn     = transportBtn("10»", 5)
+local NextBtn    = transportBtn("⏭", 6)
+
+local function refreshMusicState()
+    if not BgSound then return end
+    State.musicOn = BgSound.Playing
+    PlayBtn.Text = State.musicOn and "⏸" or "▶"
+end
+
+local function changeTrack(newIndex)
+    if newIndex < 1 then newIndex = #Playlist end
+    if newIndex > #Playlist then newIndex = 1 end
+    State.currentTrack = newIndex
+    local wasPlaying = State.musicOn
+    BgSound = createSound(State.currentTrack)
+    if wasPlaying and BgSound then
+        pcall(function() BgSound:Resume() end)
+    else
+        pcall(function() if BgSound then BgSound:Pause() end end)
+    end
+    NowPlaying.Text = "🎵 " .. Playlist[State.currentTrack].name
+    notify("Now Playing", Playlist[State.currentTrack].name)
+    refreshMusicState()
+end
+
+PrevBtn.MouseButton1Click:Connect(function() changeTrack(State.currentTrack - 1) end)
+NextBtn.MouseButton1Click:Connect(function() changeTrack(State.currentTrack + 1) end)
+RestartBtn.MouseButton1Click:Connect(function() if BgSound then BgSound.TimePosition = 0 end end)
+BackBtn.MouseButton1Click:Connect(function() if BgSound then BgSound.TimePosition = math.max(0, BgSound.TimePosition - 10) end end)
+FwdBtn.MouseButton1Click:Connect(function() if BgSound then BgSound.TimePosition = math.min(BgSound.TimeLength, BgSound.TimePosition + 10) end end)
+PlayBtn.MouseButton1Click:Connect(function()
+    if not BgSound then return end
+    if BgSound.Playing then
+        pcall(function() BgSound:Pause() end)
+    else
+        pcall(function() BgSound:Resume() end)
+    end
+    task.wait(0.05)
+    refreshMusicState()
+end)
+
+local VolumeTrack = Instance.new("Frame")
+VolumeTrack.Size = UDim2.new(1, -24, 0, 8)
+VolumeTrack.Position = UDim2.new(0, 12, 0, 156)
+VolumeTrack.BackgroundColor3 = C.blood
+VolumeTrack.BackgroundTransparency = 0.75
+VolumeTrack.BorderSizePixel = 0
+VolumeTrack.ZIndex = 13
+VolumeTrack.Parent = MusicCard
+corner(VolumeTrack, 4)
+
+local VolumeFill = Instance.new("Frame")
+VolumeFill.Size = UDim2.new(State.musicVolume, 0, 1, 0)
+VolumeFill.BackgroundColor3 = C.blood2
+VolumeFill.BorderSizePixel = 0
+VolumeFill.ZIndex = 14
+VolumeFill.Parent = VolumeTrack
+corner(VolumeFill, 4)
+
+local VolumeKnob = Instance.new("Frame")
+VolumeKnob.Size = UDim2.new(0, 14, 0, 14)
+VolumeKnob.AnchorPoint = Vector2.new(0.5, 0.5)
+VolumeKnob.Position = UDim2.new(State.musicVolume, 0, 0.5, 0)
+VolumeKnob.BackgroundColor3 = C.white
+VolumeKnob.BorderSizePixel = 0
+VolumeKnob.ZIndex = 15
+VolumeKnob.Parent = VolumeTrack
+corner(VolumeKnob, 7)
+
+local VolumeLabel = Instance.new("TextLabel")
+VolumeLabel.Size = UDim2.new(1, -24, 0, 18)
+VolumeLabel.Position = UDim2.new(0, 12, 0, 172)
+VolumeLabel.BackgroundTransparency = 1
+VolumeLabel.Text = "Volume: " .. math.floor(State.musicVolume * 100) .. "%"
+VolumeLabel.Font = Enum.Font.Code
+VolumeLabel.TextSize = 11
+VolumeLabel.TextColor3 = C.subtext
+VolumeLabel.TextXAlignment = Enum.TextXAlignment.Left
+VolumeLabel.ZIndex = 13
+VolumeLabel.Parent = MusicCard
+
+local volHit = Instance.new("TextButton")
+volHit.Size = UDim2.new(1, 0, 0, 20)
+volHit.Position = UDim2.new(0, 0, 0.5, -10)
+volHit.BackgroundTransparency = 1
+volHit.Text = ""
+volHit.AutoButtonColor = false
+volHit.ZIndex = 16
+volHit.Parent = VolumeTrack
+
+local function setVolFromX(x)
+    local a = math.clamp((x - VolumeTrack.AbsolutePosition.X) / math.max(1, VolumeTrack.AbsoluteSize.X), 0, 1)
+    VolumeFill.Size = UDim2.new(a, 0, 1, 0)
+    VolumeKnob.Position = UDim2.new(a, 0, 0.5, 0)
+    State.musicVolume = a
+    if BgSound then BgSound.Volume = a end
+    VolumeLabel.Text = "Volume: " .. math.floor(a * 100) .. "%"
+end
+volHit.InputBegan:Connect(function(input) if isPress(input) then State.volDragging = true; setVolFromX(input.Position.X) end end)
+track(UIS.InputChanged, function(input) if State.volDragging and isMove(input) then setVolFromX(input.Position.X) end end)
+track(UIS.InputEnded, function(input) if State.volDragging and isPress(input) then State.volDragging = false end end)
+
+local PlaylistTitle = Instance.new("TextLabel")
+PlaylistTitle.Size = UDim2.new(1, 0, 0, 20)
+PlaylistTitle.BackgroundTransparency = 1
+PlaylistTitle.Text = "📀 Playlist (" .. #Playlist .. " tracks) — tap to play"
+PlaylistTitle.Font = Enum.Font.Code
+PlaylistTitle.TextSize = 11
+PlaylistTitle.TextColor3 = C.subtext
+PlaylistTitle.TextXAlignment = Enum.TextXAlignment.Left
+PlaylistTitle.LayoutOrder = 2
+PlaylistTitle.ZIndex = 12
+PlaylistTitle.Parent = MusicPage
+
+local trackBtns = {}
+local function refreshTrackStyles()
+    for i, btn in ipairs(trackBtns) do
+        local sel = (i == State.currentTrack)
+        tween(btn, TweenInfo.new(0.2), {
+            BackgroundTransparency = sel and 0.1 or 0.5,
+            BackgroundColor3 = sel and C.blood or C.ink,
+        })
+    end
+end
+
+for i, trackData in ipairs(Playlist) do
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, 0, 0, 42)
+    btn.BackgroundColor3 = C.ink
+    btn.BackgroundTransparency = 0.5
+    btn.BorderSizePixel = 0
+    btn.Text = ""
+    btn.AutoButtonColor = false
+    btn.LayoutOrder = 2 + i
+    btn.ZIndex = 12
+    btn.Parent = MusicPage
+    corner(btn, 8)
+    stroke(btn, C.blood, 1, 0.6)
+
+    local num = Instance.new("TextLabel")
+    num.Size = UDim2.new(0, 32, 1, 0)
+    num.Position = UDim2.new(0, 8, 0, 0)
+    num.BackgroundTransparency = 1
+    num.Text = string.format("%02d", i)
+    num.Font = Enum.Font.Code
+    num.TextSize = 13
+    num.TextColor3 = C.blood2
+    num.ZIndex = 13
+    num.Parent = btn
+
+    local nm = Instance.new("TextLabel")
+    nm.Size = UDim2.new(1, -50, 1, 0)
+    nm.Position = UDim2.new(0, 44, 0, 0)
+    nm.BackgroundTransparency = 1
+    nm.Text = trackData.name
+    nm.Font = Enum.Font.Code
+    nm.TextSize = 11
+    nm.TextColor3 = C.text
+    nm.TextXAlignment = Enum.TextXAlignment.Left
+    nm.TextTruncate = Enum.TextTruncate.AtEnd
+    nm.ZIndex = 13
+    nm.Parent = btn
+
+    btn.MouseEnter:Connect(function()
+        if i ~= State.currentTrack then tween(btn, TweenInfo.new(0.15), {BackgroundTransparency = 0.25}) end
+    end)
+    btn.MouseLeave:Connect(function()
+        if i ~= State.currentTrack then tween(btn, TweenInfo.new(0.15), {BackgroundTransparency = 0.5}) end
+    end)
+    btn.MouseButton1Click:Connect(function()
+        changeTrack(i)
+        refreshTrackStyles()
+    end)
+
+    table.insert(trackBtns, btn)
+end
+refreshTrackStyles()
+
+track(RunService.Heartbeat, function()
+    if State.destroyed then return end
+    if MusicPage and MusicPage.Parent and MusicPage.Visible then 
+        updateSeekVisual() 
+    end
+end)
+
+-- [+] Info Page
+local InfoPage = Instance.new("ScrollingFrame")
+InfoPage.Size = UDim2.new(1, 0, 1, 0)
+InfoPage.BackgroundTransparency = 1
+InfoPage.BorderSizePixel = 0
+InfoPage.ScrollBarThickness = 2
+InfoPage.ScrollBarImageColor3 = C.blood2
+InfoPage.CanvasSize = UDim2.new(0, 0, 0, 0)
+InfoPage.AutomaticCanvasSize = Enum.AutomaticSize.Y
+InfoPage.Visible = false
+InfoPage.ZIndex = 12
+InfoPage.Parent = Content
+local InfoLayout = Instance.new("UIListLayout")
+InfoLayout.Padding = UDim.new(0, 8)
+InfoLayout.SortOrder = Enum.SortOrder.LayoutOrder
+InfoLayout.Parent = InfoPage
+local InfoPad = Instance.new("UIPadding")
+InfoPad.PaddingTop = UDim.new(0, 12)
+InfoPad.PaddingLeft = UDim.new(0, 12)
+InfoPad.PaddingRight = UDim.new(0, 10)
+InfoPad.PaddingBottom = UDim.new(0, 10)
+InfoPad.Parent = InfoPage
+
+local function fluentCard(parent, height, order)
+    local g = Instance.new("CanvasGroup")
+    g.Size = UDim2.new(1, 0, 0, height)
+    g.BackgroundColor3 = C.ink
+    g.BackgroundTransparency = 0.3
+    g.BorderSizePixel = 0
+    g.LayoutOrder = order
+    g.ZIndex = 12
+    g.Parent = parent
+    corner(g, 8)
+    stroke(g, C.blood, 1, 0.65)
+    return g
+end
+
+local SkinCard = fluentCard(InfoPage, 188, 1)
+local SkinRing = Instance.new("Frame")
+SkinRing.Size = UDim2.new(0, 104, 0, 104)
+SkinRing.AnchorPoint = Vector2.new(0.5, 0)
+SkinRing.Position = UDim2.new(0.5, 0, 0, 14)
+SkinRing.BackgroundTransparency = 1
+SkinRing.ZIndex = 13
+SkinRing.Parent = SkinCard
+corner(SkinRing, 52)
+stroke(SkinRing, C.blood2, 2.5, 0.2)
+
+local SkinImg = Instance.new("ImageLabel")
+SkinImg.Size = UDim2.new(1, -8, 1, -8)
+SkinImg.AnchorPoint = Vector2.new(0.5, 0.5)
+SkinImg.Position = UDim2.new(0.5, 0, 0.5, 0)
+SkinImg.BackgroundTransparency = 1
+SkinImg.Image = SKIN_ID
+SkinImg.ZIndex = 14
+SkinImg.Parent = SkinRing
+corner(SkinImg, 48)
+
+track(RunService.Heartbeat, function()
+    if State.destroyed then return end
+    if SkinRing and SkinRing.Parent then
+        SkinRing.Rotation = (SkinRing.Rotation + 0.4) % 360
+    end
+end)
+
+local SkinName = Instance.new("TextLabel")
+SkinName.Size = UDim2.new(1, 0, 0, 18)
+SkinName.Position = UDim2.new(0, 0, 0, 124)
+SkinName.BackgroundTransparency = 1
+SkinName.Text = "Sskidvc"
+SkinName.Font = Enum.Font.Code
+SkinName.TextSize = 14
+SkinName.TextColor3 = C.text
+SkinName.ZIndex = 13
+SkinName.Parent = SkinCard
+
+local SkinSub = Instance.new("TextLabel")
+SkinSub.Size = UDim2.new(1, -20, 0, 16)
+SkinSub.Position = UDim2.new(0, 10, 0, 144)
+SkinSub.BackgroundTransparency = 1
+SkinSub.Text = "Built by Sepehr (Sskid)"
+SkinSub.Font = Enum.Font.Code
+SkinSub.TextSize = 10
+SkinSub.TextColor3 = C.subtext
+SkinSub.ZIndex = 13
+SkinSub.Parent = SkinCard
+
+local SkinSub2 = Instance.new("TextLabel")
+SkinSub2.Size = UDim2.new(1, -20, 0, 14)
+SkinSub2.Position = UDim2.new(0, 10, 0, 162)
+SkinSub2.BackgroundTransparency = 1
+SkinSub2.Text = "Sskid Panel v9.0"
+SkinSub2.Font = Enum.Font.Code
+SkinSub2.TextSize = 9
+SkinSub2.TextColor3 = C.dim
+SkinSub2.ZIndex = 13
+SkinSub2.Parent = SkinCard
+
+local clip = (typeof(setclipboard) == "function" and setclipboard) or (typeof(toclipboard) == "function" and toclipboard) or nil
+local INFO = {
+    {"Roblox", "Sskidvc", "Sskidvc"},
+    {"Channel", "t.me/Sskidteam", "https://t.me/Sskidteam"},
+    {"Group", "t.me/Sskidvangurd", "https://t.me/Sskidvangurd"},
+    {"Telegram", "@Sskidvc", "@Sskidvc"},
+    {"TikTok", "sskidvc", "sskidvc"},
+}
+for i, row in ipairs(INFO) do
+    local g = fluentCard(InfoPage, 40, 1 + i)
+    local l = Instance.new("TextLabel")
+    l.Size = UDim2.new(0.42, 0, 1, 0)
+    l.Position = UDim2.new(0, 12, 0, 0)
+    l.BackgroundTransparency = 1
+    l.Text = row[1]
+    l.Font = Enum.Font.Code
+    l.TextSize = 12
+    l.TextColor3 = C.text
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    l.ZIndex = 13
+    l.Parent = g
+
+    local v = Instance.new("TextLabel")
+    v.Size = UDim2.new(0.58, -12, 1, 0)
+    v.Position = UDim2.new(0.42, 0, 0, 0)
+    v.BackgroundTransparency = 1
+    v.Text = row[2]
+    v.Font = Enum.Font.Code
+    v.TextSize = 11
+    v.TextColor3 = C.blood2
+    v.TextXAlignment = Enum.TextXAlignment.Right
+    v.TextTruncate = Enum.TextTruncate.AtEnd
+    v.ZIndex = 13
+    v.Parent = g
+
+    local hit = Instance.new("TextButton")
+    hit.Size = UDim2.new(1, 0, 1, 0)
+    hit.BackgroundTransparency = 1
+    hit.Text = ""
+    hit.AutoButtonColor = false
+    hit.ZIndex = 20
+    hit.Parent = g
+    hit.MouseEnter:Connect(function() tween(g, TweenInfo.new(0.15), {BackgroundTransparency = 0.05}) end)
+    hit.MouseLeave:Connect(function() tween(g, TweenInfo.new(0.15), {BackgroundTransparency = 0.3}) end)
+    hit.MouseButton1Click:Connect(function()
+        if clip then pcall(clip, row[3]); notify("Copied", row[3]) else notify(row[1], row[3]) end
+    end)
+end
+
+-- [+] Settings Page
+local SettingsPage = Instance.new("ScrollingFrame")
+SettingsPage.Size = UDim2.new(1, 0, 1, 0)
+SettingsPage.BackgroundTransparency = 1
+SettingsPage.BorderSizePixel = 0
+SettingsPage.ScrollBarThickness = 2
+SettingsPage.ScrollBarImageColor3 = C.blood2
+SettingsPage.CanvasSize = UDim2.new(0, 0, 0, 0)
+SettingsPage.AutomaticCanvasSize = Enum.AutomaticSize.Y
+SettingsPage.Visible = false
+SettingsPage.ZIndex = 12
+SettingsPage.Parent = Content
+local SetLayout = Instance.new("UIListLayout")
+SetLayout.Padding = UDim.new(0, 8)
+SetLayout.SortOrder = Enum.SortOrder.LayoutOrder
+SetLayout.Parent = SettingsPage
+local SetPad = Instance.new("UIPadding")
+SetPad.PaddingTop = UDim.new(0, 12)
+SetPad.PaddingLeft = UDim.new(0, 12)
+SetPad.PaddingRight = UDim.new(0, 10)
+SetPad.PaddingBottom = UDim.new(0, 10)
+SetPad.Parent = SettingsPage
+
+local AboutCard = fluentCard(SettingsPage, 90, 1)
+local AboutTitle = Instance.new("TextLabel")
+AboutTitle.Size = UDim2.new(1, -24, 0, 22)
+AboutTitle.Position = UDim2.new(0, 12, 0, 10)
+AboutTitle.BackgroundTransparency = 1
+AboutTitle.Text = "📢 About Sskid Panel"
+AboutTitle.Font = Enum.Font.Code
+AboutTitle.TextSize = 13
+AboutTitle.TextColor3 = C.text
+AboutTitle.TextXAlignment = Enum.TextXAlignment.Left
+AboutTitle.ZIndex = 13
+AboutTitle.Parent = AboutCard
+
+local AboutText = Instance.new("TextLabel")
+AboutText.Size = UDim2.new(1, -24, 0, 56)
+AboutText.Position = UDim2.new(0, 12, 0, 34)
+AboutText.BackgroundTransparency = 1
+AboutText.Text = "This panel is updated regularly and made by Sskid.\nکص مادر هیترا"
+AboutText.Font = Enum.Font.Code
+AboutText.TextSize = 11
+AboutText.TextColor3 = C.blood2
+AboutText.TextXAlignment = Enum.TextXAlignment.Left
+AboutText.TextYAlignment = Enum.TextYAlignment.Top
+AboutText.TextWrapped = true
+AboutText.ZIndex = 13
+AboutText.Parent = AboutCard
+
+local VersionLbl = Instance.new("TextLabel")
+VersionLbl.Size = UDim2.new(1, 0, 0, 18)
+VersionLbl.BackgroundTransparency = 1
+VersionLbl.Text = "Sskid Panel — v9.0 Fluent Dragon"
+VersionLbl.Font = Enum.Font.Code
+VersionLbl.TextSize = 10
+VersionLbl.TextColor3 = C.dim
+VersionLbl.LayoutOrder = 2
+VersionLbl.ZIndex = 12
+VersionLbl.Parent = SettingsPage
+
+-- [+] Scripts Data
+local Scripts = {
+    {name = "Infinite Yield", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source"))()', cat = "Admin"},
+    {name = "Dark Dex", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/Babyhamsta/RBLX_Scripts/main/Universal/Dark%20Dex.lua"))()', cat = "Admin"},
+    {name = "Owl Hub", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/CriShoux/OwlHub/master/OwlHub.txt"))()', cat = "Admin"},
+    {name = "F3X Backdoor", code = 'loadstring(game:HttpGet("https://gist.githubusercontent.com/zibranIndonesia/36cd617e0f320cc86f070a9c6dc77036/raw/e81836fb347cc73be6cde23e60396d6f25850cf2/zibranF3X%2520Gui"))()', cat = "Admin"},
+    {name = "SskidF3X", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/sepehrali1/Sskidf3x/refs/heads/main/Ss"))()', cat = "Admin"},
+    {name = "F3X 5", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/sepehrali1/Sskidgu/refs/heads/main/F3X5"))()', cat = "Admin"},
+    {name = "Cool Clan", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/sepehrali1/Sskidgu/refs/heads/main/C00LCLAN"))()', cat = "Admin"},
+    {name = "Last F3X Bro", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/sepehrali1/Sskidgu/refs/heads/main/F3X%20Ultimate%20Bro"))()', cat = "Admin"},
+    {name = "VR7", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/sepehrali1/Sskidgu/refs/heads/main/vr7"))()', cat = "Admin"},
+    {name = "SpongeBob F3X", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/sepehrali1/Sskidgu/refs/heads/main/spongebob"))()', cat = "Admin"},
+    {name = "F3X X9D", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/sepehrali1/Sskidgu/refs/heads/main/X9D"))()', cat = "Admin"},
+    {name = "Virus F3X", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/sepehrali1/Sskidgu/refs/heads/main/VirusF3X"))()', cat = "Admin"},
+    {name = "Tubers F3X", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/sepehrali1/Sskidgu/refs/heads/main/Tubers93F3X"))()', cat = "Admin"},
+    {name = "Polaris F3X", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/sepehrali1/Sskidgu/refs/heads/main/PolarisF3X"))()', cat = "Admin"},
+    {name = "F3X Idk", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/sepehrali1/Sskidgu/refs/heads/main/F3Xidk"))()', cat = "Admin"},
+    {name = "RC7 F3X", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/sepehrali1/Sskidgu/refs/heads/main/F3XRC7"))()', cat = "Admin"},
+    {name = "Cynatica Hub", code = 'loadstring(game:HttpGet("https://gist.githubusercontent.com/OfficialCynatica/636bed3e9ba0088733feb986768f8015/raw"))()', cat = "Admin"},
+    {name = "GTAV Admin", code = 'loadstring(game:HttpGet("https://vt-now.github.io/VIOLENT/vt.lua"))()', cat = "Admin"},
+    {name = "SskidAnimeF3X", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/sepehrali1/SskidAnimeF3D/refs/heads/main/Ss"))()', cat = "Admin"},
+
+    {name = "Hack Sound", code = 'loadstring(game:HttpGet("https://rawscripts.net/raw/Universal-Script-FE-Ac6-Music-Vulnerability-25536"))()', cat = "Troll"},
+    {name = "Bang", code = 'loadstring(game:HttpGet("https://rawscripts.net/raw/Universal-Script-Pwnmaster99s-Universal-Stuffs-205984"))()', cat = "Troll"},
+    {name = "Fling All", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/K1LAS1K/Ultimate-Fling-GUI/main/flingscript.lua"))()', cat = "Troll"},
+    {name = "Wall Hop", code = 'loadstring(game:HttpGet("https://rawscripts.net/raw/Universal-Script-Wall-hop-99778"))()', cat = "Troll"},
+    {name = "Reanime", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/STEVE-916-create/Uhhhhhh/main/source/reanim.lua"))()', cat = "Troll"},
+    {name = "Sword Kill All", code = 'loadstring(game:HttpGet("https://rawscripts.net/raw/Universal-Script-GUI-Sword-Kill-all-V6-47125"))()', cat = "Troll"},
+    {name = "Super Ring", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/sepehrali1/Super-ring1/refs/heads/main/Super%20ring"))()', cat = "Troll"},
+    {name = "Product Faker", code = 'loadstring(game:HttpGet("https://pastefy.app/yVlxzwk8/raw"))()', cat = "Troll"},
+
+    {name = "Lalol Hub", code = 'loadstring(game:HttpGet("https://rawscripts.net/raw/Universal-Script-LALOL-Hub-Backdoor-Scanner-Without-the-Hint-52003"))()', cat = "Backdoor"},
+    {name = "Sskid Backdoor", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/sepehrali1/Sskid/refs/heads/main/Sskidbackdoor"))()', cat = "Backdoor"},
+    {name = "Vuln Scan", code = 'loadstring(game:HttpGet("https://rawscripts.net/raw/Universal-Script-TimurSide-backdoor-224728"))()', cat = "Backdoor"},
+    {name = "Epic Backdoor", code = 'loadstring(game:HttpGet("https://rawscripts.net/raw/Universal-Script-Epic-Backdoor-SS-Executor-227858"))()', cat = "Backdoor"},
+    {name = "Pipazz Backdoor", code = 'loadstring(game:HttpGet("https://rawscripts.net/raw/Universal-Script-Fi-pipazz-new-106126"))()', cat = "Backdoor"},
+
+    {name = "Hydroxide", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/Upbolt/Hydroxide/master/init.lua"))()', cat = "Misc"},
+    {name = "99 Night", code = 'loadstring(game:HttpGet("https://rawscripts.net/raw/99-Nights-in-the-Forest-Foxname-Hub-Made-By-EchoBuddyYTT-110418"))()', cat = "Misc"},
+    {name = "Brookhaven", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/nxvap/Hexagon/refs/heads/main/brookhaven"))()', cat = "Misc"},
+    {name = "UBG VPN", code = 'loadstring(game:HttpGet("https://eltonshub-loader.netlify.app/UBG1.lua"))()', cat = "Misc"},
+    {name = "SCP-096", code = 'loadstring(game:HttpGet("https://rawscripts.net/raw/Universal-Script-SCP-096-GUI-UNIVERSIAL-41936"))()', cat = "Misc"},
+    {name = "Aimbot", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/lol-pixel-max/Lol-aimbot-esp-script/refs/heads/main/%60src/aimbot.lua%60"))()', cat = "Misc"},
+    {name = "MoonSec Dumper", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/RayyyFirst/Main/refs/heads/main/Moonsec-V3Dumper"))()', cat = "Misc"},
+    {name = "Server Hop", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/Shadowsys/ServerHop/main/ServerHop.lua"))()', cat = "Misc"},
+    {name = "Copy Game", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/luau/SynSaveInstance/main/saveinstance.luau"))()', cat = "Misc"},
+    {name = "Grow a Garden", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/depthso/Grow-a-Garden/refs/heads/main/autofarm.lua"))()', cat = "Misc"},
+    {name = "BABFT Auto", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/TheRealAsu/BABFT/refs/heads/main/Loader.lua"))()', cat = "Misc"},
+    {name = "Alchemy Hub", code = 'loadstring(game:HttpGet("https://scripts.alchemyhub.xyz"))()', cat = "Misc"},
+    {name = "Vynixius Doors", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/Vynixu/Vynixius/main/Doors/Script.lua"))()', cat = "Misc"},
+    {name = "Rivals Silent Aim", code = 'loadstring(game:HttpGet("https://rawscripts.net/raw/Rivals-KEYLESS-Silent-Aim-Aimbot-Skin-Changer-ESP-NO-FPS-DROP-2214"))()', cat = "Misc"},
+    {name = "Jujutsu Shenanigans", code = 'loadstring(game:HttpGet("https://rawscripts.net/raw/Jujutsu-Shenanigans-ReefHub-Lock-on-ESP-Fly-More-42000"))()', cat = "Misc"},
+    {name = "Sniper Arena", code = 'loadstring(game:HttpGet("https://thedeltascript.com/script/sniper-arena-script"))()', cat = "Misc"},
+    {name = "Universal ESP", code = 'loadstring(game:HttpGet("https://pastefy.app/VKpXX0pO/raw"))()', cat = "Misc"},
+    {name = "Blade Ball AutoParry", code = 'loadstring(game:HttpGet("https://pastefy.app/9wmnyUdKhge/raw"))()', cat = "Misc"},
+    {name = "PS99 Auto Farm", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/RKRLCE/PetSimulator99Scripts/refs/heads/main/Main.lua"))()', cat = "Misc"},
+
+    {name = "Redz Hub Blox", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/realredz/BloxFruits/refs/heads/main/Source.lua"))()', cat = "BloxFruit"},
+    {name = "Hoho Hub Blox", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/acsu123/HOHO_H/main/hohohub.txt"))()', cat = "BloxFruit"},
+    {name = "Mukuro Blox", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/MukuroHub/BloxFruits/main/Script.lua"))()', cat = "BloxFruit"},
+    {name = "Speed Hub X Blox", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/AhmadV99/Speed-Hub-X/main/Speed%20Hub%20X.lua"))()', cat = "BloxFruit"},
+    {name = "BlueX Hub Blox", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/Dev-BlueX/BlueX-Hub/refs/heads/main/Main.lua"))()', cat = "BloxFruit"},
+    {name = "Cokka Hub Blox", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/ShowScript79/cokkahub/refs/heads/main/cokkahub"))()', cat = "BloxFruit"},
+    {name = "ThunderZ Chest", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/ThundarZ/Welcome/refs/heads/main/Main/BloxFruit/Chest/AllDevices.lua"))()', cat = "BloxFruit"},
+    {name = "Level Farm Blox", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/simple-hubs/contents/refs/heads/main/bloxfruit-kaitan-main.lua"))()', cat = "BloxFruit"},
+    {name = "Quantum Onyx", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/flazhy/QuantumOnyx/refs/heads/main/QuantumOnyx.lua"))()', cat = "BloxFruit"},
+    {name = "Flow Hub Blox", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/Yumiara/Overflow/refs/heads/main/Main.lua"))()', cat = "BloxFruit"},
+
+    {name = "Eliana Hub MM2", code = 'loadstring(game:HttpGet("https://rawscripts.net/raw/MM2-Eliana-Hub-OP-Keyless-99-Features-Aimbot-No-Clip-ESP-Role-More-4076"))()', cat = "MM2"},
+    {name = "Project Noctis MM2", code = 'loadstring(game:HttpGet("https://rawscripts.net/raw/MM2-Project-Noctis-V7-Ultimate-Murder-Hub-1300"))()', cat = "MM2"},
+    {name = "MM2 Dupe", code = 'loadstring(game:HttpGet("https://rawscripts.net/raw/MM2-MM2-DUPE-TRADE-FREEZE-AND-WEAPON-SPAWNER-SCRIPT-DUPLICATOR-FOR-MM2-VERIFIED-KEYLESS-670"))()', cat = "MM2"},
+    {name = "Forge Hub MM2", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/ScriptBLOXmm2/ForgeHubWaguri/refs/heads/main/keyless"))()', cat = "MM2"},
+    {name = "Heatragram MM2", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/OlejenkaMolejenka1337/script2/refs/heads/main/scriptOBF.lua"))()', cat = "MM2"},
+
+    {name = "Owl Hub Arsenal", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/CriShoux/OwlHub/master/OwlHub.txt"))()', cat = "Arsenal"},
+    {name = "Z3US Arsenal", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/blackowl1231/Z3US/main/main.lua"))()', cat = "Arsenal"},
+    {name = "BlueX Arsenal", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/Dev-BlueX/BlueX-Hub/refs/heads/main/Main.lua"))()', cat = "Arsenal"},
+
+    {name = "Redz Hub Blade", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/REDzHUB/BladeBall/main/eng"))()', cat = "Blade Ball"},
+    {name = "Tunx Hub Blade", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/TunxDeveloper/BladeBall/main/main"))()', cat = "Blade Ball"},
+    {name = "Sirius Hub Blade", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/xdevslasher/Siriusisbetter/main/xyz.bb.lua"))()', cat = "Blade Ball"},
+    {name = "Nova X Blade", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/xdevslasher/novaxnewgen/main/novax.lua",true))()', cat = "Blade Ball"},
+    {name = "Pastefy Blade", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/KercX/PastefyScripts/main/scripts/bladeball.lua"))()', cat = "Blade Ball"},
+
+    {name = "Slime RNG Auto", code = 'loadstring(game:HttpGet("https://rawscripts.net/raw/Slime-RNG-ChillHub-Auto-Farm-Auto-Roll-47700"))()', cat = "Misc"},
+    {name = "Slime RNG OP", code = 'loadstring(game:HttpGet("https://rawscripts.net/raw/Slime-RNG-SLIME-RNG-OP-78670"))()', cat = "Misc"},
+    {name = "Dexter BRM5", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/HiIxX0Dexter0XxIiH/Roblox-Dexter-Scripts/main/loader.lua"))()', cat = "Misc"},
+    {name = "Vape V4 BedWars", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/VapeV4BedWars/main.lua"))()', cat = "Misc"},
+    {name = "Faded Hub DaHood", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/FadedHub/DaHood/main.lua"))()', cat = "Misc"},
+    {name = "Milk Up PetSim", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/MilkUpHub/Main/main/PetSimulatorX.lua"))()', cat = "Misc"},
+    {name = "Backstreet Survival", code = 'loadstring(game:HttpGet("https://rawscripts.net/raw/Backstreet-Survival-Money-Farm-Auto-Crate-Insta-Fishing-50400"))()', cat = "Misc"},
+    {name = "Cool Door Hack", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/sepehrali1/Sskidgu/refs/heads/main/scriptHack1"))()', cat = "Misc"},
+    {name = "Remote Event", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/sepehrali1/Sskidgu/refs/heads/main/RemoteEventCOOL"))()', cat = "Misc"},
+}
+
+local Hubs = {
+    {name = "Kagu Hub", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/Kaguya11/KaguHubRework/main/Scripts/Loader.lua"))()'},
+    {name = "Forge Hub", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/Skuppy/ForgeHub/main/ForgeHub.lua"))()'},
+    {name = "Ez Hub", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/Cottient/EzHub/main/EzHub.lua"))()'},
+    {name = "Moondiety Hub", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/Moondiety/Moondiety/main/loader.lua"))()'},
+    {name = "Snowy Hub", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/SnowyHub/Snowy/main/Loader.lua"))()'},
+    {name = "Flow Hub", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/Yumiara/Overflow/refs/heads/main/Main.lua"))()'},
+    {name = "Chaos Hub", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/ChaosHub/Chaos/main/loader.lua"))()'},
+    {name = "Speed Hub X", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/AhmadV99/Speed-Hub-X/main/Speed%20Hub%20X.lua"))()'},
+    {name = "Raito Hub", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/Efe0626/RaitoHub/main/Script"))()'},
+    {name = "W-Azure Hub", code = 'loadstring(game:HttpGet("https://api.luarmor.net/files/v3/loaders/3b2169cf53bc6104dabe8e19562e5cc2.lua"))()'},
+    {name = "Ronix Hub", code = 'loadstring(game:HttpGet("https://api.luarmor.net/files/v3/loaders/513ccdb3ae8a61d4d7698fc337e5256d.lua"))()'},
+    {name = "Cokka Hub", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/UserDevEthical/Loadstring/main/CokkaHub.lua"))()'},
+    {name = "AnDepZai Hub", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/AnDepZaiHub/AnDepZaiHubBeta/refs/heads/main/AnDepZaiHubNewUpdated.lua"))()'},
+    {name = "Aurora Hub", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/Jadelly261/Aurora/main/Aurora.lua"))()'},
+    {name = "Pastefy Universal", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/KercX/PastefyScripts/main/scripts/universal.lua"))()'},
+}
+
+local entries = {}
+for _, s in ipairs(Scripts) do table.insert(entries, s) end
+for _, h in ipairs(Hubs) do table.insert(entries, {name = h.name, code = h.code, cat = "Hubs"}) end
+
+-- [+] باگ 1 Fix: تعریف runEntry قبل از استفاده
+runEntry = function(e)
+    notify("Sskid Reborn", e.name .. " executing...")
+    task.spawn(function()
+        local ok, err = pcall(function()
+            local fn = loadstring(e.code)
+            if fn then fn() end
+        end)
+        if ok then 
+            notify("Success", e.name .. " loaded!")
+        else 
+            notify("Error in " .. e.name, tostring(err):sub(1, 60))
+        end
+    end)
+end
+
+-- [+] باگ 2 Fix: applyBlurSafe با چک کردن isMobile
+-- (قبلاً درست بود، چون isMobile قبل از فراخوانی تعریف شده بود)
+
+-- [+] Tile Pool
+local tilePool = {}
+local function makeTile()
+    local tile = Instance.new("CanvasGroup")
+    tile.BackgroundColor3 = C.ink
+    tile.BackgroundTransparency = 0.25
+    tile.BorderSizePixel = 0
+    tile.ZIndex = 12
+    tile.Parent = TileScroll
+    corner(tile, 8)
+    local ts = stroke(tile, C.blood, 1, 0.65)
+    local scale = Instance.new("UIScale")
+    scale.Parent = tile
+
+    local iconBox = Instance.new("Frame")
+    iconBox.Size = UDim2.new(0, 36, 0, 36)
+    iconBox.Position = UDim2.new(0.5, -18, 0, 10)
+    iconBox.BackgroundColor3 = C.blood
+    iconBox.BackgroundTransparency = 0.2
+    iconBox.ZIndex = 13
+    iconBox.Parent = tile
+    corner(iconBox, 8)
+
+    local iconLbl = Instance.new("TextLabel")
+    iconLbl.Size = UDim2.new(1, 0, 1, 0)
+    iconLbl.BackgroundTransparency = 1
+    iconLbl.Font = Enum.Font.Code
+    iconLbl.TextSize = 16
+    iconLbl.TextColor3 = C.white
+    iconLbl.ZIndex = 14
+    iconLbl.Parent = iconBox
+
+    local nameLbl = Instance.new("TextLabel")
+    nameLbl.Size = UDim2.new(1, -8, 0, 28)
+    nameLbl.Position = UDim2.new(0, 4, 0, 50)
+    nameLbl.BackgroundTransparency = 1
+    nameLbl.Font = Enum.Font.Code
+    nameLbl.TextSize = 10
+    nameLbl.TextColor3 = C.text
+    nameLbl.TextWrapped = true
+    nameLbl.TextXAlignment = Enum.TextXAlignment.Center
+    nameLbl.ZIndex = 13
+    nameLbl.Parent = tile
+
+    local hit = Instance.new("TextButton")
+    hit.Size = UDim2.new(1, 0, 1, 0)
+    hit.BackgroundTransparency = 1
+    hit.Text = ""
+    hit.AutoButtonColor = false
+    hit.ZIndex = 20
+    hit.Parent = tile
+
+    hit.MouseEnter:Connect(function()
+        tween(tile, TweenInfo.new(0.15), {BackgroundTransparency = 0.05})
+        tween(ts, TweenInfo.new(0.15), {Transparency = 0.1})
+    end)
+    hit.MouseLeave:Connect(function()
+        tween(tile, TweenInfo.new(0.15), {BackgroundTransparency = 0.25})
+        tween(ts, TweenInfo.new(0.15), {Transparency = 0.65})
+    end)
+    hit.InputBegan:Connect(function(i) if isPress(i) then tween(scale, TweenInfo.new(0.1), {Scale = 0.93}) end end)
+    hit.InputEnded:Connect(function(i) if isPress(i) then tween(scale, TweenInfo.new(0.2, EASE2), {Scale = 1}) end end)
+
+    local currentEntry = nil
+    hit.MouseButton1Click:Connect(function()
+        if currentEntry and runEntry then
+            runEntry(currentEntry)
+        end
+    end)
+
+    local ref = {
+        tile = tile,
+        iconLbl = iconLbl,
+        nameLbl = nameLbl,
+        ts = ts,
+        scale = scale,
+        setEntry = function(e) currentEntry = e end,
+    }
+
+    table.insert(tilePool, ref)
+    return ref
+end
+
+refreshTiles = function()
+    local q = string.lower(SearchBox.Text)
+    local visibleEntries = {}
+    for _, e in ipairs(entries) do
+        local catOk = (State.currentCat == "All") or (e.cat == State.currentCat)
+        local searchOk = (q == "") or string.find(string.lower(e.name), q, 1, true)
+        if catOk and searchOk then
+            table.insert(visibleEntries, e)
+        end
+    end
+
+    for i, e in ipairs(visibleEntries) do
+        local ref
+        if tilePool[i] then
+            ref = tilePool[i]
+        else
+            ref = makeTile()
+        end
+        ref.tile.Visible = true
+        ref.tile.LayoutOrder = i
+        ref.iconLbl.Text = string.sub(e.name, 1, 1):upper()
+        ref.nameLbl.Text = e.name
+        ref.setEntry(e)
+    end
+
+    for i = #visibleEntries + 1, #tilePool do
+        if tilePool[i] and tilePool[i].tile then
+            tilePool[i].tile.Visible = false
+        end
+    end
+
+    EmptyLabel.Text = (#visibleEntries == 0) and "No results found" or ""
+end
+
+local function scheduleRefresh()
+    if State.refreshQueued then return end
+    State.refreshQueued = true
+    task.delay(0.15, function() 
+        State.refreshQueued = false
+        if not State.destroyed and refreshTiles then refreshTiles() end
+    end)
+end
+
+local function styleChips()
+    for cat, c in pairs(chipBtns) do
+        local sel = (cat == State.currentCat)
+        tween(c, TweenInfo.new(0.2), {BackgroundTransparency = sel and 0.1 or 0.75, TextColor3 = sel and C.white or C.subtext})
+    end
+end
+
+local Categories = {"All", "Admin", "Troll", "Backdoor", "Misc", "BloxFruit", "MM2", "Arsenal", "Blade Ball", "Hubs"}
+local chipBtns = {}
+
+for i, cat in ipairs(Categories) do
+    local btn = Instance.new("TextButton")
+    btn.AutomaticSize = Enum.AutomaticSize.X
+    btn.Size = UDim2.new(0, 0, 1, 0)
+    btn.BackgroundColor3 = C.blood
+    btn.BackgroundTransparency = 0.75
+    btn.Text = cat
+    btn.Font = Enum.Font.Code
+    btn.TextSize = 11
+    btn.TextColor3 = C.subtext
+    btn.AutoButtonColor = false
+    btn.LayoutOrder = i
+    btn.ZIndex = 13
+    btn.Parent = ChipsScroll
+    corner(btn, 5)
+    local pad = Instance.new("UIPadding")
+    pad.PaddingLeft = UDim.new(0, 10)
+    pad.PaddingRight = UDim.new(0, 10)
+    pad.Parent = btn
+    chipBtns[cat] = btn
+    btn.MouseButton1Click:Connect(function()
+        State.currentCat = cat
+        styleChips()
+        if refreshTiles then refreshTiles() end
+    end)
+end
+styleChips()
+SearchBox:GetPropertyChangedSignal("Text"):Connect(scheduleRefresh)
+if refreshTiles then refreshTiles() end
+
+local currentPage = nil
+local function selectPage(name, force)
+    if currentPage == name and not force then return end
+    currentPage = name
+    local map = {scripts = ScriptsPage, music = MusicPage, info = InfoPage, settings = SettingsPage}
+    local icons = {scripts = IconScripts, music = IconMusic, info = IconInfo, settings = IconSettings}
+    local yMap = {scripts = 8, music = 54, info = 100, settings = 146}
+
+    for key, p in pairs(map) do p.Visible = (key == name) end
+    for key, ic in pairs(icons) do tween(ic, TweenInfo.new(0.2), {TextColor3 = (key == name) and C.white or C.subtext}) end
+    tween(SideIndicator, TweenInfo.new(0.3, EASE2), {Position = UDim2.new(0, 0, 0, yMap[name])})
+
+    if name == "scripts" and refreshTiles then refreshTiles() end
+end
+
+IconScripts.MouseButton1Click:Connect(function() selectPage("scripts") end)
+IconMusic.MouseButton1Click:Connect(function() selectPage("music") end)
+IconInfo.MouseButton1Click:Connect(function() selectPage("info") end)
+IconSettings.MouseButton1Click:Connect(function() selectPage("settings") end)
+
+-- [+] باگ 4 Fix: Drag فقط از DragArea
+DragArea.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        State.dragStart = input.Position
+        State.startPos = Main.Position
+        State.isDragging = true
+    end
+end)
+
+track(UIS.InputChanged, function(input)
+    if not State.isDragging or not State.dragStart then return end
+    if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then return end
+    local delta = input.Position - State.dragStart
+    Main.Position = UDim2.new(
+        State.startPos.X.Scale, State.startPos.X.Offset + delta.X,
+        State.startPos.Y.Scale, State.startPos.Y.Offset + delta.Y
+    )
+end)
+
+track(UIS.InputEnded, function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        State.dragStart = nil
+        State.isDragging = false
+    end
+end)
+
+-- [+] Taskbar
+local Taskbar = Instance.new("Frame")
+Taskbar.Size = UDim2.new(1, 0, 0, 48)
+Taskbar.AnchorPoint = Vector2.new(0, 1)
+Taskbar.Position = UDim2.new(0, 0, 1, 0)
+Taskbar.BackgroundColor3 = C.ink
+Taskbar.BackgroundTransparency = 0.12
+Taskbar.ZIndex = 40
+Taskbar.Parent = ScreenGui
+stroke(Taskbar, C.blood, 1, 0.7)
+local taskAccent = Instance.new("Frame")
+taskAccent.Size = UDim2.new(1, 0, 0, 1)
+taskAccent.BackgroundColor3 = C.blood
+taskAccent.BackgroundTransparency = 0.4
+taskAccent.BorderSizePixel = 0
+taskAccent.ZIndex = 40
+taskAccent.Parent = Taskbar
+
+local StartBtn = Instance.new("ImageButton")
+StartBtn.Size = UDim2.new(0, 36, 0, 36)
+StartBtn.Position = UDim2.new(0, 8, 0.5, -18)
+StartBtn.BackgroundColor3 = C.blood
+StartBtn.BackgroundTransparency = 0.15
+StartBtn.Image = LOGO_ID
+StartBtn.ScaleType = Enum.ScaleType.Fit
+StartBtn.ZIndex = 41
+StartBtn.Parent = Taskbar
+corner(StartBtn, 8)
+stroke(StartBtn, C.blood2, 1, 0.3)
+
+local TaskTitle = Instance.new("TextLabel")
+TaskTitle.Size = UDim2.new(0, 160, 1, 0)
+TaskTitle.Position = UDim2.new(0, 54, 0, 0)
+TaskTitle.BackgroundTransparency = 1
+TaskTitle.Text = "Sskid Panel"
+TaskTitle.Font = Enum.Font.Code
+TaskTitle.TextSize = 12
+TaskTitle.TextColor3 = C.text
+TaskTitle.TextXAlignment = Enum.TextXAlignment.Left
+TaskTitle.ZIndex = 41
+TaskTitle.Parent = Taskbar
+
+local Clock = Instance.new("TextLabel")
+Clock.Size = UDim2.new(0, 90, 1, 0)
+Clock.AnchorPoint = Vector2.new(1, 0)
+Clock.Position = UDim2.new(1, -10, 0, 0)
+Clock.BackgroundTransparency = 1
+Clock.Text = "--:--"
+Clock.Font = Enum.Font.Code
+Clock.TextSize = 12
+Clock.TextColor3 = C.subtext
+Clock.TextXAlignment = Enum.TextXAlignment.Right
+Clock.ZIndex = 41
+Clock.Parent = Taskbar
+task.spawn(function()
+    while Main.Parent and not State.destroyed do
+        local ok, t = pcall(function() return os.date("*t") end)
+        if ok and t then Clock.Text = string.format("%02d:%02d", t.hour, t.min) end
+        task.wait(5)
+    end
+end)
+
+local ready, closing = false, false
+
+local function openPanel()
+    if closing or Main.Visible then return end
+    -- [+] باگ 3 Fix: اگه minimized بود، اول restore
+    if State.isMinimized then
+        State.isMinimized = false
+        Sidebar.Visible = true
+        Content.Visible = true
+        TBTitle.Text = "Sskid Panel"
+    end
+    Backdrop.Visible = true
+    Main.Visible = true
+    Main.Size = UDim2.new(0, State.panelW * 0.85, 0, State.panelH * 0.85)
+    Main.BackgroundTransparency = 1
+    mainStroke.Transparency = 1
+    applyBlur(true)
+    tween(Main, TweenInfo.new(0.4, EASE2), {Size = UDim2.new(0, State.panelW, 0, State.panelH), BackgroundTransparency = 0.1})
+    tween(mainStroke, TweenInfo.new(0.4), {Transparency = 0.45})
+    tween(StartBtn, TweenInfo.new(0.15), {BackgroundTransparency = 0})
+end
+
+local function closePanel()
+    if closing or not Main.Visible then return end
+    closing = true
+    -- [+] باگ 3 Fix: اگه minimized بود، وضعیت رو ریست کن
+    if State.isMinimized then
+        State.isMinimized = false
+        Sidebar.Visible = true
+        Content.Visible = true
+        TBTitle.Text = "Sskid Panel"
+    end
+    applyBlur(false)
+    tween(StartBtn, TweenInfo.new(0.15), {BackgroundTransparency = 0.15})
+    local t = tween(Main, TweenInfo.new(0.3, EASE), {Size = UDim2.new(0, State.panelW * 0.85, 0, State.panelH * 0.85), BackgroundTransparency = 1})
+    tween(mainStroke, TweenInfo.new(0.3), {Transparency = 1})
+    t.Completed:Connect(function()
+        Main.Visible = false
+        Backdrop.Visible = false
+        closing = false
+    end)
+end
+
+local function minimizePanel()
+    if State.isMinimized or not Main.Visible then return end
+    State.isMinimized = true
+    -- [+] باگ 6 Fix: همیشه اندازه فعلی رو ذخیره کن
+    State.savedW = State.panelW
+    State.savedH = State.panelH
+    TBTitle.Text = "Sskid (minimized)"
+    Sidebar.Visible = false
+    Content.Visible = false
+    tween(Main, TweenInfo.new(0.3, EASE), {Size = UDim2.new(0, 260, 0, 40)})
+end
+
+local function restorePanel()
+    if not State.isMinimized then return end
+    State.isMinimized = false
+    TBTitle.Text = "Sskid Panel"
+    tween(Main, TweenInfo.new(0.35, EASE2), {Size = UDim2.new(0, State.savedW, 0, State.savedH)})
+    task.delay(0.35, function()
+        if not State.isMinimized and Main.Visible then
+            Sidebar.Visible = true
+            Content.Visible = true
+        end
+    end)
+end
+
+local function togglePanel() 
+    if not ready then return end
+    if State.isMinimized then
+        restorePanel()
+    elseif Main.Visible then 
+        closePanel() 
+    else 
+        openPanel() 
+    end 
+end
+
+CloseBtn.MouseButton1Click:Connect(closePanel)
+StartBtn.MouseButton1Click:Connect(togglePanel)
+MinBtn.MouseButton1Click:Connect(minimizePanel)
+
+track(UIS.InputBegan, function(input, processed)
+    if processed then return end
+    if input.KeyCode == Enum.KeyCode.RightShift then togglePanel() end
+end)
+
+-- [+] باگ 5 Fix: Responsive + UIScale
+if camera then
+    track(camera:GetPropertyChangedSignal("ViewportSize"), function()
+        if State.destroyed then return end
+        refreshViewport()
+        local w, h = calcDimensions()
+        State.panelW = w
+        State.panelH = h
+        local newScale = calcUIScale()
+        State.currentUIScale = newScale
+        tween(MainScale, TweenInfo.new(0.2), {Scale = newScale})
+        if Main.Visible and not State.isMinimized then 
+            Main.Size = UDim2.new(0, State.panelW, 0, State.panelH) 
+        end
+        -- [+] باگ 6 Fix: savedW/savedH رو آپدیت کن
+        if not State.isMinimized then
+            State.savedW = State.panelW
+            State.savedH = State.panelH
+        end
+    end)
+end
+
+-- [+] Loading با Timeout
+task.spawn(function()
+    local startTime = tick()
+    while (tick() - startTime) < 2.5 do
+        task.wait(0.1)
+        if State.destroyed then return end
+    end
+
+    if State.destroyed then return end
+
+    pcall(function()
+        tween(LoadingFrame, TweenInfo.new(0.5), {BackgroundTransparency = 1})
+        tween(LTitle, TweenInfo.new(0.35), {TextTransparency = 1})
+        tween(LSub, TweenInfo.new(0.35), {TextTransparency = 1})
+        tween(LLogo, TweenInfo.new(0.4), {ImageTransparency = 1})
+        tween(LGlow, TweenInfo.new(0.4), {BackgroundTransparency = 1})
+        tween(ringStroke, TweenInfo.new(0.35), {Transparency = 1})
+    end)
+
+    task.wait(0.55)
+    if State.destroyed then return end
+    pcall(function() if LoadingFrame then LoadingFrame:Destroy() end end)
+
+    pcall(function()
+        Backdrop.Visible = true
+        Main.Visible = true
+        Main.Size = UDim2.new(0, State.panelW * 0.7, 0, State.panelH * 0.7)
+        Main.BackgroundTransparency = 1
+        mainStroke.Transparency = 1
+        tween(Main, TweenInfo.new(0.6, EASE2), {Size = UDim2.new(0, State.panelW, 0, State.panelH), BackgroundTransparency = 0.1})
+        tween(mainStroke, TweenInfo.new(0.6), {Transparency = 0.45})
+        tween(StartBtn, TweenInfo.new(0.3), {BackgroundTransparency = 0})
+
+        selectPage("scripts", true)
+        ready = true
+        notify("Welcome", "Sskid Panel v9.0 loaded", "ok")
+    end)
+end)
+
+-- [+] باگ 5 Fix: Cleanup کامل
+local function cleanup()
+    if State.destroyed then return end
+    State.destroyed = true
+    for _, c in ipairs(State.connections) do
+        pcall(function() c:Disconnect() end)
+    end
+    State.connections = {}
+    if BgSound then pcall(function() BgSound:Stop() end) end
+    if blur then pcall(function() blur:Destroy() end) end
+end
+
+ScreenGui.Destroying:Connect(cleanup)
+
+print("[Sskid Reborn v9.0] Loaded — TRUE Bug-Free Edition")
